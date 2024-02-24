@@ -29,6 +29,7 @@ import tkinter.ttk as ttk
 from tkinter.font import Font
 from tkinter import filedialog
 from tkinter import messagebox
+from tkinter import simpledialog
 from collections import Counter
 from __version__ import VERSION, PATCH, PATCH_MAC, PATCH_LINUX
 from cryptography.fernet import Fernet
@@ -57,6 +58,8 @@ import sys
 import yaml
 from ml_collections import ConfigDict
 from collections import Counter
+from pytube import YouTube
+from moviepy.editor import AudioFileClip
 
 # if not is_macos:
 #     import torch_directml
@@ -239,6 +242,8 @@ VR_PARAM_DIR = os.path.join(BASE_PATH, 'lib_v5', 'vr_network', 'modelparams')
 SAMPLE_CLIP_PATH = os.path.join(BASE_PATH, 'temp_sample_clips')
 ENSEMBLE_TEMP_PATH = os.path.join(BASE_PATH, 'ensemble_temps')
 DOWNLOAD_MODEL_CACHE = os.path.join(BASE_PATH, 'gui_data', 'model_manual_download.json')
+
+YOUTUBE_DOWNLOAD_DIR = os.path.join(BASE_PATH, 'downloads')
 
 #CR Text
 CR_TEXT = os.path.join(BASE_PATH, 'gui_data', 'cr_text.txt')
@@ -2177,14 +2182,41 @@ class MainWindow(TkinterDnD.Tk if is_dnd_compatible else tk.Tk):
             
         return filenames
 
-    def input_select_filedialog(self):
+    def input_select_filedialog(self, dialoge_type=MAIN_MULTIPLE_FILE):
         """Make user select music files"""
 
         if self.lastDir is not None:
             if not os.path.isdir(self.lastDir):
                 self.lastDir = None
 
-        paths = self.show_file_dialog(dialoge_type=MAIN_MULTIPLE_FILE)
+        if dialoge_type == YT_SC_LINK:
+            link = simpledialog.askstring("Ultimate Vocal Remover", "Enter a YouTube or Soundcloud link")
+
+            try:
+                # create temp directory for downloading stuff to
+                if not os.path.exists(YOUTUBE_DOWNLOAD_DIR): 
+                    os.mkdir(YOUTUBE_DOWNLOAD_DIR)
+
+                # download youtube video file
+                video = YouTube(link)
+                stream = video.streams.filter(only_audio=True).first()
+                downloaded_path = stream.download(YOUTUBE_DOWNLOAD_DIR)
+
+                # convert to .mp3
+                audio = AudioFileClip(downloaded_path)
+                base, ext = os.path.splitext(downloaded_path)
+                filename = f"{base}.mp3"
+                audio.write_audiofile(filename)
+
+                # delete original video file
+                if os.path.exists(downloaded_path):
+                    os.remove(downloaded_path)
+
+                paths = (filename,)
+            except Exception as e:
+                paths = None
+        else:
+            paths = self.show_file_dialog(dialoge_type=dialoge_type)
 
         if paths:  # Path selected
             self.inputPaths = paths
@@ -2875,10 +2907,13 @@ class MainWindow(TkinterDnD.Tk if is_dnd_compatible else tk.Tk):
             input_files_listbox_Option.config(width=230, height=25) if is_widen_box_var.get() else input_files_listbox_Option.config(width=110, height=17)
             self.menu_placement(menu_view_inputs_top, 'Selected Inputs', pop_up=True)
 
-        def input_options(is_select_inputs=True):
+        def input_options(is_select_inputs=True, is_ytsc_input=False):
             input_info_text_var.set('')
             if is_select_inputs:
-                self.input_select_filedialog()
+                if is_ytsc_input:
+                    self.input_select_filedialog(YT_SC_LINK)
+                else:
+                    self.input_select_filedialog()
             else:
                 self.inputPaths = ()
             reset_list()
@@ -2986,7 +3021,10 @@ class MainWindow(TkinterDnD.Tk if is_dnd_compatible else tk.Tk):
         self.main_window_LABEL_SET(menu_view_inputs_Frame, SELECTED_INPUTS).grid(row=0,column=0,padx=0,pady=MENU_PADDING_1)
         tk.Label(menu_view_inputs_Frame, textvariable=input_length_var, font=(MAIN_FONT_NAME, f"{FONT_SIZE_1}"), foreground=FG_COLOR).grid(row=1, column=0, padx=0, pady=MENU_PADDING_1)
         if not OPERATING_SYSTEM == "Linux":
-            ttk.Button(menu_view_inputs_Frame, text=SELECT_INPUTS, command=lambda:input_options()).grid(row=2,column=0,padx=0,pady=MENU_PADDING_2)
+            button_frame = tk.Frame(menu_view_inputs_Frame)
+            button_frame.grid(row=2, column=0, padx=0, pady=MENU_PADDING_2)
+            ttk.Button(button_frame, text=SELECT_INPUTS, command=lambda:input_options()).grid(row=0,column=0,padx=20)
+            ttk.Button(button_frame, text=SELECT_YOUTUBE_SOUNDCLOUD_INPUTS, command=lambda:input_options(is_ytsc_input=True)).grid(row=0,column=1,padx=20)
         input_files_listbox_Option = tk.Listbox(menu_view_inputs_Frame, selectmode=tk.EXTENDED, activestyle='dotbox', font=(MAIN_FONT_NAME, f"{FONT_SIZE_1}"), background='#101414', exportselection=0, width=110, height=17, relief=tk.SOLID, borderwidth=0)
         input_files_listbox_vertical_scroll = ttk.Scrollbar(menu_view_inputs_Frame, orient=tk.VERTICAL)
         input_files_listbox_Option.config(yscrollcommand=input_files_listbox_vertical_scroll.set)
